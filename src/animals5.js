@@ -2,7 +2,7 @@
 "use strict";
 var Module = new instance.ecmascript.v5.Module( 'earth.animals' );
 
-var Animal5 = Module.Class_extends( 'Animal5', instance.earth.LivingThing5, {
+var Animal5 = Module.Class( 'class Animal5 extends', instance.earth.LivingThing5, {
     __static_class_init: function() {
         this.instanceCounter = 0;
     },
@@ -16,7 +16,7 @@ var Animal5 = Module.Class_extends( 'Animal5', instance.earth.LivingThing5, {
     },
 });
 
-var Mammal5 = Module.Class_extends( 'Mammal5', Animal5, {
+var Mammal5 = Module.Class( 'class Mammal5 extends', Animal5, {
     __static_class_init: function() {
         this.instanceCounter = 0;
     },
@@ -30,7 +30,7 @@ var Mammal5 = Module.Class_extends( 'Mammal5', Animal5, {
     },
 });
 
-var Insect5 = Module.Class_extends( 'Insect5', Animal5, {
+var Insect5 = Module.Class( 'class Insect5 extends', Animal5, {
     __static_class_init: function() {
         this.instanceCounter = 0;
     },

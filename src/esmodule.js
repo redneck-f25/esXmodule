@@ -6,14 +6,11 @@ var functionPrototype = Object.getPrototypeOf( Function );
 var Module = class Module {
     constructor( name ) {
         var module;
-        
-        this.name = name;
         module = instance;
         name.split( '.' ).map( function( p ) {
             module = module[ p ] || ( module[ p ] = {} );
         });
-        module.__name__ = name;
-        this.module = module;
+        ( this.module = module ).__name__ = name;
     }
     static get( name ) {
         var module;
@@ -22,27 +19,46 @@ var Module = class Module {
         return module;
     }
     Class( visible, mixins, Class ) {
-        var __proto__, prototype;
+        var __proto__, prototype, static_class_init;
         
-        /* all arguments except the latter are mixins */
-        mixins = [].slice.call( arguments, 0, -1 );
-        Class = arguments[ mixins.length ];
+        /* process arguments */
+        mixins = [].slice.call( arguments );
+        Class = mixins.pop();
         
         visible = ( mixins.length && mixins[ 0 ] === false ) ? mixins.shift() : true;
         
+        /* extract static initalizer */
+        if ( Class.__class_init ) {
+            static_class_init = Class.__class_init;
+            delete Class.__class_init;
+        }
+    
         __proto__ = Object.getPrototypeOf( Class );
+        
         ( prototype = Class.prototype ).__class__ = Class;
-        
-        //console.log( '> Init class ' + Class.name + ' extends ' + __proto__.name );
-        
         Class.__module__ = this.module;
+        
+        /* Mix in. Last wins.*/
+        mixins.reverse().forEach( function( mixin ) {
+            /* if mixing in a class inspect its prototype*/
+            if ( typeof mixin === 'function' ) {
+                mixin = mixin.prototype;
+            }
+                
+            Object.getOwnPropertyNames( mixin ).forEach( function( name ) {
+                if ( !prototype.hasOwnProperty( name ) ) {
+                    console.log( '  > Mixing in ' + name );
+                    prototype[ name ] = mixin[ name ];
+                }
+            });
+        });
         
         /* Method Resolution Order */
         Class.__mro__ = [ Class ].concat( __proto__ === functionPrototype ? [] :
                 __proto__.prototype.__class__.__mro__ );
         
-        /* get base class from mro */
-        Class.__base__ = function ( /* [ module ], */ name ) {
+        /* Method to get base class from mro */
+        Class.__base__ = function __base__( /* [ module ], */ name ) {
             var module, baseClass;
             
             if ( arguments.length === 0 ) {
@@ -68,8 +84,8 @@ var Module = class Module {
             return baseClass || null;
         }
         
-        /* Get and set static variables */
-        prototype.__static__ = function( name, newValue ) {
+        /* Method to get and set static variables */
+        prototype.__static__ = function __static__( name, newValue ) {
             var oldValue;
             
             var doit = function doit( clazz ) {
@@ -89,25 +105,11 @@ var Module = class Module {
             throw new Error( 'Static Variable ' + name + ' not found.' );
         }
         
-        /* Mix in. Last wins.*/
-        mixins.reverse().forEach( function( mixin ) {
-            if ( typeof mixin === 'function' ) {
-                mixin = mixin.prototype;
-            }
-                
-            Object.getOwnPropertyNames( mixin ).forEach( function( name ) {
-                if ( !prototype.hasOwnProperty( name ) ) {
-                    console.log( '  > Mixing in ' + name );
-                    prototype[ name ] = mixin[ name ];
-                }
-            });
-        });
-        
         /* Execute static initializer. */
-        if ( Class.__class_init ) {
-            Class.__class_init();
-            delete Class.__class_init;
-        }
+        static_class_init && static_class_init.call( Class );
+        
+        mixins = undefined;
+        static_class_init = undefined;
         
         /* return the class object and add to module if visible */
         return ( visible ? this.module[ Class.name ] = Class : Class );

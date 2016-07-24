@@ -2,7 +2,7 @@
 "use strict";
 var Module = new instance.ecmascript.v5.Module( 'earth' );
 
-var LivingThing5 = Module.Class( 'LivingThing5', {
+var LivingThing5 = Module.Class( 'class LivingThing5', {
     __static_class_init: function() {
         this.instanceCounter = 0;
     },

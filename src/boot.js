@@ -89,11 +89,11 @@ bootloader.run([
         if ( isIE && !isEdge ) {
             bootloader.next();
         } else {
-            moduleLoader.call( [ 'esmodule', 'earth', 'animals', 'plants' ] );
+            moduleLoader.call( [ 'es6module', 'earth', 'animals', 'plants' ] );
         }
     },
     function() {
-        moduleLoader.call( [ 'esmodule5', 'earth5', 'animals5', 'plants5' ] );
+        moduleLoader.call( [ 'es5module', 'earth5', 'animals5', 'plants5' ] );
     },
     function() {
         if ( isIE && !isEdge ) {

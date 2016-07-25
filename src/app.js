@@ -4,6 +4,7 @@ var Module = new instance.ecmascript.v5.Module( 'application' );
 
 var Application = Module.Class( 'class Application', {
     constructor: function() {
+        document.title += ' - ' + location.host
         window.addEventListener( 'error', this.on_unhandled_error.bind( this ) );
         var boot_script = document.getElementById('boot_script');
         boot_script.parentElement.removeChild(boot_script);

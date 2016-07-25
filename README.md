@@ -1,6 +1,6 @@
-# esmodule
+# esXmodule
 
-run at <https://friday.w3tools.de/githubcontent/esmodule/master/index.html>
+run at <https://friday.w3tools.de/githubcontent/esXmodule/master/index.html>
 
 ## Example
 ```javascript

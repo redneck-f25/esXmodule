@@ -124,7 +124,7 @@ var Module = class Module {
                 if ( typeof o === 'object' ) {
                     doit( pre + name + '.', o )
                 } else if ( typeof o === 'function' && o.__module__ === module ) {
-                    console.log( pre + name, o, o.instanceCounter, o.__mro__.slice( 1 ) );
+                    instance.log( pre + name, o, o.instanceCounter, o.__mro__.slice( 1 ) ).style.whiteSpace = 'pre';
                     callback && callback( o );
                 }
             });
@@ -141,7 +141,7 @@ var Module = class Module {
                 if ( typeof o !== 'function' || ( name.startsWith( '__' ) && name.endsWith( '__' ) ) || name === '_super' ) {
                     return;
                 }
-                console.log( '  ', v[ 1 ] + name );
+                instance.log( '  ' + v[ 1 ] + name ).style.whiteSpace = 'pre';
             });
         });
     }

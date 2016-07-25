@@ -7,6 +7,13 @@ var Application = Module.Class( 'class Application', {
         window.addEventListener( 'error', this.on_unhandled_error.bind( this ) );
         var boot_script = document.getElementById('boot_script');
         boot_script.parentElement.removeChild(boot_script);
+        boot_script = null;
+        instance.log = function( msg ) {
+            var div = document.body.appendChild( document.createElement( 'div' ) )
+            msg && ( div.innerHTML = msg );
+            console.log.apply( console, arguments );
+            return div;
+        };
     },
     run: function() {
         document.body.appendChild( document.createElement( 'div' ) ).innerHTML = '[SUCCESS] Start application';

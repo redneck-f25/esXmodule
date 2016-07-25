@@ -28,6 +28,7 @@ var moduleLoader = function moduleLoader() {
     }
     var module = this.shift();
     var script = document.createElement( 'script')
+    script.async = false;
     script.src = 'src/' + module + '.js';
     script.addEventListener( 'load', moduleLoader.loadEventListener = moduleLoader.bind( this ) );
     script.addEventListener( 'error', moduleLoader.errorEventListener = function(event) {
@@ -39,18 +40,22 @@ var moduleLoader = function moduleLoader() {
 
 var startApplication = function startApplication() {
     window.removeEventListener( 'load', startApplication.loadEventListener );
-    appendDiv( '[SUCCESS] document loaded' );
+    appendDiv( '[SUCCESS] Load document' );
+    var application = new instance.application.Application();
+    application.run();
 }
 
 var bootloader = new ( function Bootloader() {
     this.run = function run( steps ) {
         (this.next = function next() {
-            ( steps.length ? steps.shift() : this.succeeded.bind( this ) )();
+            ( steps.length ? steps.shift() : this[this.isFailed ? 'failed' : 'succeeded' ].bind( this ) )();
         })();
     };
     this.cleanUp = function cleanUp() {
         delete moduleLoader.loadEventListener;
         delete moduleLoader.errorEventListener;
+        window.removeEventListener( 'error', bootloader.errorEventHandler );
+        bootloader = undefined;
     };
     this.succeeded = function succeeded() {
         this.cleanUp();
@@ -65,6 +70,22 @@ var bootloader = new ( function Bootloader() {
 
 bootloader.run([
     function() {
+        window.addEventListener( 'error', bootloader.errorEventHandler = function( event ) {
+            var err, msg;
+            
+            err = event.error;
+            msg = [
+                '[FAIL] Unhandled Exception @ ' +
+                err.fileName.replace( baseUrlRe, '' ) +
+                ':' + err.lineNumber + ':' + err.columnNumber,
+                err.message,
+                ].concat( err.stack.split( /\n/ ) );
+            appendDiv( msg.join( '<br>\n' ) );
+            bootloader.isFailed = true;
+        });
+        bootloader.next();
+    },
+    function() {
         if ( isIE && !isEdge ) {
             bootloader.next();
         } else {
@@ -73,6 +94,13 @@ bootloader.run([
     },
     function() {
         moduleLoader.call( [ 'esmodule5', 'earth5', 'animals5', 'plants5' ] );
+    },
+    function() {
+        if ( isIE && !isEdge ) {
+            bootloader.next();
+        } else {
+            moduleLoader.call( [ 'mix' ] );
+        }
     },
     function() {
         moduleLoader.call( [ 'app' ] );

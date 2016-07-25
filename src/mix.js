@@ -3,9 +3,12 @@
 var Module5 = new instance.ecmascript.v5.Module( 'mix' );
 var Module6 = new instance.ecmascript.v6.Module( 'mix' );
 
-var MixBase5 = Module5.Class( 'class MixBase', {
+var MixBase5 = Module5.Class( 'class MixBase5', {
     constructor: function( hint ) {
         instance.log( '[' + hint + '] MixBase5::constructor() for ' + this.__class__.name );
+    },
+    __static_classMethod: function( hint ) {
+        instance.log( '[' + hint + '] static MixBase5::classMethod() for ' + this.name );
     },
     doit: function( hint ) {
         instance.log( '[' + hint + '] MixBase5::doit() for ' + this.__class__.name );
@@ -13,9 +16,12 @@ var MixBase5 = Module5.Class( 'class MixBase', {
     },
 });
 
-var MixBase6 = Module6.Class( class MixBase {
+var MixBase6 = Module6.Class( class MixBase6 {
     constructor( hint ) {
         instance.log( '[' + hint + '] MixBase6::constructor() for ' + this.__class__.name );
+    }
+    static classMethod( hint ) {
+        instance.log( '[' + hint + '] static MixBase6::classMethod() for ' + this.name );
     }
     doit( hint ) {
         instance.log( '[' + hint + '] MixBase6::doit() for ' + this.__class__.name );
@@ -32,7 +38,7 @@ var DictMixin = {
 
 var Class5Mixin = Module5.Class( false, 'class Class5Mixin', {
     foobaz: function( hint ) {
-        instance.log( '[' + hint + '] Class5Mixin::foobac() for ' + this.__class__.name );
+        instance.log( '[' + hint + '] Class5Mixin::foobaz() for ' + this.__class__.name );
         return this;
     }
 });

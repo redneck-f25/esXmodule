@@ -51,6 +51,9 @@ var initializing = false;
         initializing = false;
         
         var $$ = function $$() {
+            if ( !( this instanceof Class ) ) {
+                throw new TypeError( 'class constructors must be invoked with |new|' );
+            }
             if ( !initializing && this.constructor ) {
                 var ret = this.constructor.apply( this, arguments );
                 if ( ret !== undefined ) return ret;
@@ -63,8 +66,26 @@ var initializing = false;
         ( Class.prototype = prototype ).__class__ = Class;
         Class.__module__ = this.module;
         
+        ( function() {
+            for ( var name in base ) {
+                if ( name.startsWith( '__' ) && name.endsWith( '__' ) ) {
+                    continue;
+                }
+                if ( typeof base[ name ] == 'function' ) {
+                    Class[ name ] = base[ name ];
+                }
+            }
+            for ( var name in classDef ) {
+                if ( name.startsWith( '__static_' ) ) {
+                    Class[ name.substr( 9 ) ] = classDef[ name ];
+                    delete classDef[ name ];
+                }
+            }
+        })();
         /* Mix in. Last wins.*/
         mixins.concat( [ base, classDef ] ).forEach( function( mixin ) {
+            /* if mixing in a class inspect its prototype */
+            typeof mixin === 'function' && ( mixin = mixin.prototype );
             for ( var name in mixin ) {
                 prototype[ name ] = mixin[ name ];
             }

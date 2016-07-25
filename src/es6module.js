@@ -40,16 +40,10 @@ var Module = class Module {
         
         /* Mix in. Last wins.*/
         mixins.reverse().forEach( function( mixin ) {
-            /* if mixing in a class inspect its prototype*/
-            if ( typeof mixin === 'function' ) {
-                mixin = mixin.prototype;
-            }
-                
+            /* if mixing in a class inspect its prototype */
+            typeof mixin === 'function' && ( mixin = mixin.prototype );
             Object.getOwnPropertyNames( mixin ).forEach( function( name ) {
-                if ( !prototype.hasOwnProperty( name ) ) {
-                    console.log( '  > Mixing in ' + name );
-                    prototype[ name ] = mixin[ name ];
-                }
+                prototype.hasOwnProperty( name ) || ( prototype[ name ] = mixin[ name ] );
             });
         });
         

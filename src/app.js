@@ -60,10 +60,13 @@ var Application = Module.Class( 'class Application', {
         }
         if ( instance.ecmascript.v6 ) {
             new instance.mix.MixClass1( 'MixClass1' ).doit( 'MixClass1' );
-            var mixclass11 = new instance.mix.MixClass11( 'MixClass11' ).doit( 'MixClass11' ).foobar( 'MixClass11' )
-            mixclass11.foobar( 'MixClass21' );
+            new instance.mix.MixClass11( 'MixClass11' ).doit( 'MixClass11' ).foobar( 'MixClass11' ).foobaz( 'MixClass11' ).doit( 'MixClass11' );
             new instance.mix.MixClass2( 'MixClass2' ).doit( 'MixClass2' );
-            new instance.mix.MixClass21( 'MixClass21' ).doit( 'MixClass21' ).foobar( 'MixClass21' ).foobaz( 'MixClass21' );
+            new instance.mix.MixClass21( 'MixClass21' ).doit( 'MixClass21' ).foobar( 'MixClass21' ).foobaz( 'MixClass21' ).doit( 'MixClass21' );
+            instance.mix.MixBase6.classMethod( 'MixBase6' );
+            instance.mix.MixClass2.classMethod( 'MixClass2' );
+            instance.mix.MixBase5.classMethod( 'MixBase5' );
+            instance.mix.MixClass1.classMethod( 'MixClass1' );
             //new instance.mix.MixClass3( 'MixClass3' ).doit( 'MixClass3' );
         }
     },

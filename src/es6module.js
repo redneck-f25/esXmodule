@@ -1,42 +1,63 @@
+/**
+ * Module management for ECMAScript 6.
+ *
+ * @module es6module
+ * @author Daniel Hammerschmidt <daniel@redneck-engineering.com>
+ */
 ( function( instance ) {
 "use strict";
 
-var functionPrototype = Object.getPrototypeOf( Function );
+var motherOfClasses = Object.getPrototypeOf( Function );
 
+/**
+ * @class Module
+ * @constructor
+ * @param {String} moduleName Fully qualified name.
+ */
 var Module = class Module {
-    constructor( name ) {
+    constructor( moduleName ) {
         var module;
         module = instance;
-        name.split( '.' ).map( function( p ) {
+        moduleName.split( '.' ).map( function( p ) {
             module = module[ p ] || ( module[ p ] = {} );
         });
-        ( this.module = module ).__name__ = name;
+        ( this.module = module ).__name__ = moduleName;
     }
-    static get( name ) {
+    /**
+     * @method get
+     * @param {String} moduleName Fully qualified name.
+     * @return {Module} Module
+     */
+    static get( moduleName ) {
         var module;
         module = instance;
-        name.split( '.' ).map( function( p ) { module = module[ p ]; });
+        moduleName.split( '.' ).map( function( p ) {
+            module = module[ p ];
+        });
         return module;
     }
+    /**
+     * @method Class
+     * @param {Boolean} [visible=true]
+     * @param {Class | Object} [...mixins]
+     * @param {Class} Class 
+     */
     Class( visible, mixins, Class ) {
-        var __proto__, prototype, static_class_init;
+        var prototype, static_class_init, baseClass;
         
-        /* process arguments */
-        mixins = [].slice.call( arguments );
+        mixins = Array.prototype.slice.call( arguments );
         Class = mixins.pop();
         
         visible = ( mixins.length && mixins[ 0 ] === false ) ? mixins.shift() : true;
         
-        /* extract static initalizer */
+        baseClass = Object.getPrototypeOf( Class );
+        
         if ( Class.__class_init ) {
             static_class_init = Class.__class_init;
             delete Class.__class_init;
         }
-    
-        __proto__ = Object.getPrototypeOf( Class );
         
-        ( prototype = Class.prototype ).__class__ = Class;
-        Class.__module__ = this.module;
+        ( ( prototype = Class.prototype ).__class__ = Class ).__module__ = this.module;
         
         /* Mix in. Last wins.*/
         mixins.reverse().forEach( function( mixin ) {
@@ -48,8 +69,8 @@ var Module = class Module {
         });
         
         /* Method Resolution Order */
-        Class.__mro__ = [ Class ].concat( __proto__ === functionPrototype ? [] :
-                __proto__.prototype.__class__.__mro__ );
+        Class.__mro__ = [ Class ].concat(
+                baseClass === motherOfClasses ? [] : baseClass.__mro__ );
         
         /* Method to get base class from mro */
         Class.__base__ = function __base__( /* [ module ], */ name ) {
@@ -66,23 +87,21 @@ var Module = class Module {
                 name = name.substr( p + 1 );
             }
             
-            var doit = function doit( clazz ) {
+            this.__mro__.some( function( clazz ) {
                 if ( clazz.name === name && ( !module || clazz.__module__.__name__ === module ) ) {
                     baseClass = clazz;
                     return true;
                 }
-            }
-            
-            this.__mro__.some( doit );
+            } );
             
             return baseClass || null;
         }
         
         /* Method to get and set static variables */
         prototype.__static__ = function __static__( name, newValue ) {
-            var oldValue;
+            var oldValue, found;
             
-            var doit = function doit( clazz ) {
+            found = this.__class__.__mro__.some( function ( clazz ) {
                 if ( clazz.hasOwnProperty( name ) ) {
                     oldValue = clazz[ name ];
                     if ( newValue !== undefined ) {
@@ -90,9 +109,9 @@ var Module = class Module {
                     }
                     return true;
                 }
-            }
+            });
             
-            if ( this.__class__.__mro__.some( doit ) ) {
+            if ( found ) {
                 return oldValue;
             }
             
@@ -108,34 +127,55 @@ var Module = class Module {
         /* return the class object and add to module if visible */
         return ( visible ? this.module[ Class.name ] = Class : Class );
     }
-    
-    static listClasses( /*[ callback ],*/ module /*...*/ ) {
-        var callback, modules;
+    /**
+     * Iterates over classes in modules.
+     *
+     * @method iterClasses
+     * @static
+     * @param {Boolean}  [recursive=true]
+     * @param {Module}   ...modules
+     * @param {Function} callback
+     */
+    static iterClasses( recursive, modules, callback ) {
+        modules = Array.prototype.slice.call( arguments );
+        callback = modules.pop();
+        recursive = modules[ 0 ] === false ? recursive : true;
         
-        var doit = function doit( pre, module ) {
+        modules.forEach( ( function doit( pre, module ) {
             Object.getOwnPropertyNames( module ).sort().forEach( function( name )  {
                 var o = module[ name ];
-                if ( typeof o === 'object' ) {
-                    doit( pre + name + '.', o )
-                } else if ( typeof o === 'function' && o.__module__ === module ) {
-                    instance.log( pre + name, o, o.instanceCounter, o.__mro__.slice( 1 ) ).style.whiteSpace = 'pre';
-                    callback && callback( o );
+                if ( typeof o === 'object' &&
+                     name[ 0 ] == name[ 0 ].toLowerCase() ) {
+                    recursive && doit( pre + name + '.', o );
+                } else if ( typeof o === 'function' &&
+                            name[ 0 ] == name[ 0 ].toUpperCase() &&
+                            o.__module__ === module ) {
+                    callback( o );
                 }
             });
-        }
-        modules = [].slice.call( arguments );
-        callback = typeof modules[ 0 ] === 'function' ? modules.shift() : false;
-        modules.forEach( doit.bind( null, '' ) )
+        } ).bind( undefined, '' ) )
     }
-    
-    static listMethods( clazz ) {
-        [ [ clazz.prototype, '' ],[ clazz, 'static ' ] ].forEach( function( v ) {
-            Object.getOwnPropertyNames( v[ 0 ] ).sort().forEach( function( name )  {
-                var o = v[ 0 ][ name ];
-                if ( typeof o !== 'function' || ( name.startsWith( '__' ) && name.endsWith( '__' ) ) || name === '_super' ) {
-                    return;
-                }
-                instance.log( '  ' + v[ 1 ] + name ).style.whiteSpace = 'pre';
+    /**
+     * Iterates over methods in classes.
+     *
+     * @method iterMethods
+     * @static
+     * @param {Module}   ...classes
+     * @param {Function} callback
+     */
+    static iterMethods( classes, callback ) {
+        classes = Array.prototype.slice.call( arguments );
+        callback = classes.pop();
+        
+        classes.forEach( function( clazz ) {
+            [ [ clazz.prototype, '' ], [ clazz, 'static ' ] ].forEach( function( t ) {
+                Object.getOwnPropertyNames( t[ 0 ] ).sort().forEach( function( name )  {
+                    var o = t[ 0 ][ name ];
+                    if ( typeof o === 'function' && name !== '_super' &&
+                         !name.startsWith( '__' ) && !name.endsWith( '__' ) ) {
+                        callback( o, t[ 1 ] + name );
+                    }
+                });
             });
         });
     }

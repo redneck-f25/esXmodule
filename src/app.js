@@ -28,9 +28,17 @@ var Application = Module.Class( 'class Application', {
             console.log( flower.__class__.__module__ );
             console.log( flower.__class__.__base__( 'earth.LivingThing' ));
             console.log( '---' );
-            instance.ecmascript.v6.Module.listClasses( instance.earth.animals, instance.earth.plants );
+            instance.ecmascript.v6.Module.iterClasses(
+                    instance.earth.animals, instance.earth.plants, function( clazz ) {
+                instance.log( clazz.name, clazz.__module__, clazz.instanceCounter, clazz.__mro__.slice( 1 ) ).style.whiteSpace = 'pre';
+            });
             console.log( '---' );
-            instance.ecmascript.v6.Module.listClasses( instance.ecmascript.v6.Module.listMethods, instance );
+            instance.ecmascript.v6.Module.iterClasses( instance, function( clazz ) {
+                instance.log( clazz.__module__.__name__ + '.' + clazz.name ).style.whiteSpace = 'pre';
+                instance.ecmascript.v6.Module.iterMethods( clazz, function( method, methodName ) {
+                    instance.log( '  ' + ( methodName ) ).style.whiteSpace = 'pre';
+                });
+            } );
 
             mammal.doSomething( 'lactate' );
             flower.doSomething( 'blossom' );

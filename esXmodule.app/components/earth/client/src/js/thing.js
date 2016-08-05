@@ -1,10 +1,16 @@
 "use strict";
 
-var Class = require( '../utils/Class6' );
-var Class5 = require( '../utils/Class5' );
+var Class = require( '../utils/common/ClassV6' );
+var OldStyleClass = require( '../utils/common/Class' );
+
+var allInstances = [];
 
 var ClientThing = Class( module, class ClientThing {
+    static __class_init( ClientThing ) {
+        ClientThing.allInstances = allInstances;
+    }
     constructor() {
+        allInstances.push( this );
         console.log(
                 ClientThing.name + '::constructor() on Client\n' +
                 '  class: ' + this.__class__.name + '\n' +
@@ -14,8 +20,12 @@ var ClientThing = Class( module, class ClientThing {
 
 var Thing = exports.Thing = Class( module, class Thing extends ClientThing {} );
 
-var ClientThing5 = Class5( module, 'class ClientThing5', {
-    constructor: function ClientThing5() {
+var ClientThing5 = OldStyleClass( module, 'class ClientThing5', {
+    __static_class_init: function __class_init( ClientThing5 ) {
+        ClientThing5.allInstances = allInstances;
+    },
+    constructor: function constructor() {
+        allInstances.push(this);
         console.log(
                 ClientThing5.name + '::constructor() on Client\n' +
                 '  class: ' + this.__class__.name + '\n' +
@@ -23,4 +33,4 @@ var ClientThing5 = Class5( module, 'class ClientThing5', {
     },
 });
 
-var Thing5 = exports.Thing5 = Class5( module, 'class Thing5 extends', ClientThing5, {} );
+var Thing5 = exports.Thing5 = OldStyleClass( module, 'class Thing5 extends', ClientThing5, {} );

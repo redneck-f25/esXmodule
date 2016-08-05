@@ -1,104 +1,144 @@
 "use strict";
 
-var Class = require( '../utils/Class6' );
+var Class = require( '../utils/common/ClassV6' );
 
+var process = require( 'process' );
 var fs = require( 'fs' );
 var path = require( 'path' );
 var mkdirp = require('mkdirp' );
 var walk = require( 'walk' );
 var extend = require( 'util' )._extend;
 
-var CACHE_DIR = path.join( __dirname, '../../.cache' );
+var CACHE_DIR = path.join( __dirname, '../../../.cache' );
 var COMPONENTS_DIR = path.join( __dirname, '..' );
-var USE_RAW_REGEXP = /^["']use raw['"];\s*/;
+var USE_PLAIN_REGEXP = /^["']use plain['"];\s*/;
+
+var GLOBAL_WEBCLIENT_VARIABLE_NAME = 'WebClient';
 var SRC_LOCATION = 'client/src';
 var LIB_LOCATION = 'client/lib';
-var SHARE_LOCATION = 'common';
-var BOOT_MODULE = [ 'web', SRC_LOCATION, 'js', 'boot.js'].join( '/' );
+var COMMON_LOCATION = 'common';
+var ONESHOT_LOCATION = 'oneshot';
+var BOOT_MODULE = [ 'web', SRC_LOCATION, 'js', 'boot.js' ].join( '/' );
+
+var WALK_FILTER_REGEXP = new RegExp( ( ( source )=>( source.replace( /[/\\]/g, '\\\\' ) ) )( [
+    '^' + COMPONENTS_DIR,
+    '(?:' + path.sep + '.*)?',
+    path.sep + '-',
+    ].join( '' ) ) );
 
 var LOCATION_REGEXP = new RegExp(
-        '^\/+((.*?)\\/(?:' + [
-            '(' + SRC_LOCATION + ')/.*?',
-            '(' + LIB_LOCATION + ')',
-            '(' + SHARE_LOCATION + ')',
-        ].join( '|' ).replace( /\//g, '\\/') +
-         ')\/(.*?)(?:\\.(\\w+))?)$' );
+    '^/+((.*?)/(?:'                    // 0, 1
+    + [
+        '(' + SRC_LOCATION + ')/.*?',  // 2
+        '(' + LIB_LOCATION + ')',      // 3
+        '(' + COMMON_LOCATION + ')',   // 4
+        '(' + ONESHOT_LOCATION + ')',  // 5
+        ].join( '|' )
+    + ')/(.*?)(?:\\.(\\w+))?)$' );     // 6, 7
 
 function splitPath( params ) {
     typeof params === 'string' && ( params = ( params.match( LOCATION_REGEXP ) || [ null ] ).slice( 1 ) );
     return {
         rawPath:       path.join( COMPONENTS_DIR, params[ 0 ] ),
         relativePath:  params[ 0 ],
-        cachedPath:    path.join( CACHE_DIR, params[ 0 ] ),
-        virtualPath:   params[ 1 ] + '/' + ( params[ 4 ] ? params[ 4 ] + '/' : '' ) + params[ 5 ],
+        cachePath:     path.join( CACHE_DIR, params[ 0 ] ),
+        virtualPath:   params[ 1 ] + '/' + ( params[ 4 ] ? params[ 4 ] + '/' : '' ) + params[ 6 ],
         isSrc:         !!params[ 2 ],
         isLib:         !!params[ 3 ],
-        isShared:      !!params[ 4 ],
-        ressourceType: params[ 6 ] || '',
+        isCommon:      !!params[ 4 ],
+        isOneshot:     !!params[ 5 ],
+        ressourceType: params[ 7 ] || '',
     };
 }
 
 var RessourceDispatcher = module.exports = Class( module, class RessourceDispatcher {
+
     static __class_init() {
-        this.routerRegExp = LOCATION_REGEXP;
+        this.plainJsModuleArgumentsGetter = {
+            [ BOOT_MODULE ]: function ( ressource ) {
+                var ressources = {};
+                for ( var type in ressource.ressources ) {
+                    if ( type === '__boot__' ) {
+                        continue;
+                    }
+                    ressources[ type ] = Object.getOwnPropertyNames( ressource.ressources[ type ] ).filter( function __filterMinifiedRessources( relativePath ) {
+                        var reversePathSplit = relativePath.split( '.' ).reverse();
+                        if ( reversePathSplit.length >= 3 && reversePathSplit[ 1 ] === 'min') {
+                            var maxPath = reversePathSplit.slice( 2 ).reverse().concat( reversePathSplit[ 0 ] ).join( '.' );
+                            if ( ressource.ressources[ type ][ maxPath ] ) {
+                                return false;
+                            }
+                        }
+                        return true;
+                    } ).sort();
+                }
+                return {
+                    globalWebClientVariableName: GLOBAL_WEBCLIENT_VARIABLE_NAME,
+                    ressources,
+                    };
+            }
+        };
+    }
+
+    static get routerRegExp() {
+        return LOCATION_REGEXP;
     }
 
     static handleRequest( req, res, next ) {
-        var context = extend( { req: req, res: res }, splitPath( req.params ) );
+        var ressource = splitPath( req.params );
 
-        if ( context.ressourceType === 'js' ) {
-            if ( context.relativePath === 'web/client/src/js/oneshot.js' ) {
-                res.sendFile( path.join( CACHE_DIR, 'oneshot.js' ) );
-            } else {
-                RessourceDispatcher._ensureCache( context, ensureCache_callback.bind( context ) );
-            }
-        } else if ( context.ressourceType === 'css' ) {
-            res.sendFile( context.rawPath );
+        if ( ressource.isOneshot ) {
+            ressource.cachePath = ressource.cachePath.replace( path.join( CACHE_DIR, 'web', 'client', 'oneshot' ), CACHE_DIR );
+            res.sendFile( ressource.cachePath );
+        } else if ( ressource.ressourceType === 'js' ) {
+            RessourceDispatcher._ensureCache( ressource, ensureCache_callback );
+        } else if ( ressource.ressourceType === 'css' ) {
+            res.sendFile( ressource.rawPath );
         } else {
             res.status( 403 ).send( 'Forbidden' );
         }
 
         function ensureCache_callback( err ) {
             if ( err ) {
-                context.res.status( 500 ).send( 'Internal Server Error' );
+                res.status( 500 ).send( 'Internal Server Error' );
             } else {
-                context.res.sendFile( context.cachedPath );
+                res.sendFile( ressource.cachePath );
             }
         }
     }
 
-    static _ensureCache( context, callback ) {
+    static _ensureCache( ressource, callback ) {
 
-        fs.stat( context.rawPath, statOnRawJsFile_callback );
-
+        if ( ressource.cacheStats ) {
+            process.nextTick( statOnCacheJsFile_callback, null, ressource.cacheStats );
+        } else if ( ressource.rawStats ) {
+            fs.stat( ressource.cachePath, statOnCacheJsFile_callback );
+        } else {
+            fs.stat( ressource.rawPath, statOnRawJsFile_callback );
+        }
+        
         function statOnRawJsFile_callback( err, stats ) {
-            context.rawFileStats = stats;
+            ressource.rawStats = stats;
 
             if ( err ) {
                 callback( err );
             } else {
-                fs.stat( context.cachedPath, statOnCachedJsFile_callback );
+                fs.stat( ressource.cachePath, statOnCacheJsFile_callback );
             }
         }
 
-        function statOnCachedJsFile_callback( err, stats ) {
-            context.cachedFileStats = stats;
+        function statOnCacheJsFile_callback( err, stats ) {
+            ressource.cacheStats = stats;
             if ( err ) {
                 if ( err.code === 'ENOENT' ) {
-                    mkdirp( path.dirname( context.cachedPath ), mkCacheDir_callback );
+                    mkdirp( path.dirname( ressource.cachePath ), mkCacheDir_callback );
                 } else {
                     callback( err );
                 }
-            /**/
-            } else if ( context.rawFileStats.mtime > stats.mtime ) {
-                writeJsFileToCache( callback );
+            } else if ( 'debug' === '' || ressource.rawStats.mtime > stats.mtime ) {
+                writeJsFileToCache();
             } else {
-                callback();
-                // context.res.sendFile( context.cachedPath );
-            /*/
-            } else {
-                writeJsFileToCache( context, callback);
-            /**/
+                process.nextTick( callback );
             }
         }
 
@@ -111,41 +151,45 @@ var RessourceDispatcher = module.exports = Class( module, class RessourceDispatc
         }
 
         function writeJsFileToCache() {
-            if ( context.relativePath === BOOT_MODULE ) {
-                if ( context.ressources === undefined ) {
-                    RessourceDispatcher._buildRessourceTree( context, writeJsFileToCache );
-                    return;
-                } else {
-                    var dict = {};
-                    for ( var type in context.ressources ) {
-                        if ( type === '__boot__') {
-                            continue;
+            if ( ressource.relativePath === BOOT_MODULE ) {
+                if ( ressource.ressources === undefined ) {
+                    RessourceDispatcher._buildRessourceTree( function buildRessourceTree_callback( err, ressources, maxMtimes ) {
+                        if ( err ) {
+                            return callback( err );
                         }
-                        var list = dict[ type ] = [];
-                        for ( var relativePath in context.ressources[ type ] ) {
-                            list.push( context.ressources[ type ][ relativePath ].relativePath );
-                        }
-                    }
+                        
+                        ( ressources.__boot__ = ressource ).ressources = ressources;
+                        delete ressources[ 'js' ][ BOOT_MODULE ];
 
-                    var module_args = { ressources: dict };
-                    context.moduleArguments = module_args;
+                        writeJsFileToCache();
+                    });
+                    return;
                 }
             }
-            var isRawFile = false;
-            var content = fs.readFileSync( context.rawPath, 'utf8' ).replace( USE_RAW_REGEXP, ()=>( isRawFile = true, '' ) );
-            var scopeName = '$__module__' + context.virtualPath.replace( /[^$\w\d]/g, '_' ) + '__';
+            var isPlainFile = false;
+            var content = fs.readFileSync( ressource.rawPath, 'utf8' ).replace( USE_PLAIN_REGEXP, ()=>( isPlainFile = true, '' ) );
+            var scopeName = '__module__' + ressource.virtualPath.replace( /[^$\w\d]/g, '_' ) + '__';
             var head, foot;
-            var moduleName = context.isLib ? context.virtualPath.replace( /\.min$/, '' ) : context.virtualPath;
+            var moduleName = ressource.isLib ? ressource.virtualPath.replace( /\.min$/, '' ) : ressource.virtualPath;
 
-            if ( context.ressourceType === 'js' ) {
-                if ( isRawFile ) {
-                    var moduleArguments = context.moduleArguments || {};
+            if ( ressource.ressourceType === 'js' ) {
+                if ( isPlainFile ) {
+                    var moduleArguments = RessourceDispatcher._getPlainJsModuleArguments( ressource );
                     var moduleArgumentNames = Object.getOwnPropertyNames( moduleArguments );
 
-                    head = '( function ' + scopeName + '( ' + moduleArgumentNames.join( ', ') + ' ) {';
-                    foot = '})( ' + moduleArgumentNames.map( (name)=>( JSON.stringify( moduleArguments[ name ], null, '  ' ) ) ).join( ', ' ) + ' );';
+                    head = [];
+                    head.push( '( function ' + scopeName + '(' );
+                    moduleArgumentNames.length && head.push( ' ' + moduleArgumentNames.join( ', ') + ' ' );
+                    head.push( '){');
+                    head = head.join( '' );
+
+                    foot = [];
+                    foot.push( '})(' );
+                    moduleArgumentNames.length && foot.push( ' ' + moduleArgumentNames.map( ( name )=>( JSON.stringify( moduleArguments[ name ], null, '  ' ) ) ).join( ', ' ) + ' ' );
+                    foot.push( ');' );
+                    foot = foot.join( '' );
                 } else {
-                    head = 'WebClient.define( "' + moduleName + '", '
+                    head = GLOBAL_WEBCLIENT_VARIABLE_NAME + '.define( "' + moduleName + '", '
                         + 'function ' + scopeName + '( exports, require, module ) {';
                     foot = '});';
                 }
@@ -154,199 +198,230 @@ var RessourceDispatcher = module.exports = Class( module, class RessourceDispatc
                 foot = '';
             }
 
-            content = [
-                '/* ' + ( context.virtualPath + '.' + context.ressourceType + ' ' + '*'.repeat( 72 ) ).slice( 0, 74 )
-                + '*' + '/',
-                head, content, foot, '', ].join( '\n' );
+            content = [ head, content, foot, '', ].join( '\n' );
 
-            fs.createWriteStream( context.cachedPath )
+            fs.createWriteStream( ressource.cachePath )
             .on( 'error', callback )
             .on( 'finish', callback )
             .end( content );
         }
     }
 
-    static _buildRessourceTree( context, callback ) {
-        context.maxMtimes = {};
-        context.ressources = {};
-        context.pendingOperations |= 0;
-
+    static _buildRessourceTree( callback ) {
+        var maxMtimes = {};
+        var ressources = {};
+        var pendingOperations = 0;
 
         fs.readdir( COMPONENTS_DIR, readComponentsDir_callback );
 
         function readComponentsDir_callback( err, files ) {
             if ( err ) {
-                throw err;
-            } else {
-                context.pendingOperations += files.length;
-                files.forEach( function __forEachComponent( name ){
-                    var componentContext = { componentName: name };
-                    fs.stat( path.join( COMPONENTS_DIR, name ),
-                             statComponent_callback.bind( componentContext ) );
-                });
+                return callback( err );
             }
+
+            pendingOperations += files.length;
+            files.forEach( function __forEachComponent( name ){
+                if ( name.charAt( 0 ) === '-' ) {
+                    --pendingOperations;
+                    return;
+                }
+                fs.stat( path.join( COMPONENTS_DIR, name ),
+                         statComponent_callback.bind( { componentName: name } ) );
+            });
         }
 
         function statComponent_callback( err, stats ) {
             var componentContext = this;
-            context.pendingOperations--;
-            var componentPath = path.join( COMPONENTS_DIR, componentContext.componentName );
-            var srcPath = path.join( componentPath, SRC_LOCATION );
-            var libPath = path.join( componentPath, LIB_LOCATION );
-            var sharePath = path.join( componentPath, SHARE_LOCATION );
+            --pendingOperations;
 
             if ( err ) {
-                // TODO: ???
-            } else if ( stats.isDirectory() ) {
-                [ { type: 'src',    path: srcPath },
-                  { type: 'lib',    path: libPath },
-                  { type: 'common', path: sharePath } ].forEach( function __forEachComponentFragment( fragmentContext ) {
-                    context.pendingOperations++;
-                    fragmentContext.componentContext = componentContext;
-
-                    fs.stat( fragmentContext.path, statComponentFragment_callback.bind( fragmentContext ) );
-                });
+                return callback( err );
             }
+            if ( !stats.isDirectory() ) {
+                return;
+            }
+            var componentPath = path.join( COMPONENTS_DIR, componentContext.componentName );
+            var fragments = [
+                { type: 'src',    path: path.join( componentPath, SRC_LOCATION ) },
+                { type: 'lib',    path: path.join( componentPath, LIB_LOCATION ) },
+                { type: 'common', path: path.join( componentPath, COMMON_LOCATION ) },
+                ]; 
+
+            pendingOperations += fragments.length;
+            fragments.forEach( function __forEachComponentFragment( fragmentContext ) {
+                fragmentContext.componentContext = componentContext;
+
+                fs.stat( fragmentContext.path, statComponentFragment_callback.bind( fragmentContext ) );
+            });
         }
 
         function statComponentFragment_callback( err, stats ) {
             var fragmentContext = this;
-            context.pendingOperations--;
+            --pendingOperations;
+
             if ( err ) {
-                // TODO: ???
-            } else {
-                context.pendingOperations++;
-                walk.walk( fragmentContext.path )
-                .on( 'file', walkComponentFragmentOnFile_callback.bind( fragmentContext ) )
-                .on( 'end', walkComponentFragmentOnEnd_callback.bind( fragmentContext ) );
+                if ( err.code === 'ENOENT' ) {
+                    return;
+                }
+                return callback( err );
             }
+            ++pendingOperations;
+            walk.walk( fragmentContext.path, { filters: [ WALK_FILTER_REGEXP ] } )
+            .on( 'file', walkComponentFragmentOnFile_callback.bind( fragmentContext ) )
+            .on( 'end', walkComponentFragmentOnEnd_callback.bind( fragmentContext ) );
         }
 
         function walkComponentFragmentOnFile_callback( root, fileStats, next ) {
             var fragmentContext = this;
             var absolutePath = path.join( root, fileStats.name );
-            var relativePath = absolutePath.slice( COMPONENTS_DIR.length );
-            ( path.sep == '/' ) || ( relativePath = relativePath.split( path.sep ).join( '/' ) );
-            var ressource = splitPath( relativePath );
+            var ressource = splitPath( ( ( p )=>( path.sep !== '/' ? p.split( path.sep ).join( '/' ) : p ) )( absolutePath.slice( COMPONENTS_DIR.length ) ) );
             var ressourceType = ressource.ressourceType;
-            var ressources = context.ressources;
-            var maxMtimes = context.maxMtimes;
 
-            // TODO: think about how to ex- or include ressources
-            if ( !/\/-/.test( relativePath ) ) {
-                if ( ressource.isSrc || ressourceType === 'js' ) {
+            if ( fileStats.name.charAt( 0 ) === '-' ) {
+                return next();
+            }
 
-                    var dict = ( ressources[ ressourceType ] || ( ressources[ ressourceType ] = {} ) );
-                    dict[ ressource.relativePath ] = extend( ressource, { rawFileStats: fileStats, mtime: fileStats.mtime } );
+            if ( ressourceType === 'js' || ressourceType === 'css' ) {
+                ressource.rawStats = fileStats;
+                ( ressources[ ressourceType ] || ( ressources[ ressourceType ] = {} ) )[ ressource.relativePath ] = ressource;
 
-                    if ( maxMtimes[ ressourceType ] === undefined || fileStats.mtime > maxMtimes[ ressourceType ] ) {
-                        maxMtimes[ ressourceType ] = fileStats.mtime;
-                    }
+                if ( maxMtimes[ ressourceType ] === undefined || fileStats.mtime > maxMtimes[ ressourceType ] ) {
+                    maxMtimes[ ressourceType ] = fileStats.mtime;
                 }
             }
             next();
         }
 
         function walkComponentFragmentOnEnd_callback() {
-            if ( --context.pendingOperations ) {
+            if ( --pendingOperations ) {
                 return;
             }
-
-            context.ressources.__boot__ = context.ressources[ 'js' ][ BOOT_MODULE ];
-            delete context.ressources[ 'js' ][ BOOT_MODULE ];
-
-            callback( null );
+            process.nextTick( callback, null, ressources, maxMtimes );
         }
     }
 
-    static joinRessourcesToCache( callback ) {
-        var context = {
-            pendingOperations: 0,
-        }
+    static _getPlainJsModuleArguments( ressource ) {
+        var getter = RessourceDispatcher.plainJsModuleArgumentsGetter[ ressource.relativePath ];
+        return getter ? getter( ressource ) : {};
+    }
 
-        RessourceDispatcher._buildRessourceTree( context, buildRessourceTree_callback );
+    static makeOneshotRessources( callback ) {
+        var pendingOperations = 0;
+        var ressources;
+        var maxMtimes;
+        var writeStreams = {};
 
-        function buildRessourceTree_callback( err ) {
-            context.ressources.__boot__.ressources = context.ressources;
-            RessourceDispatcher._ensureCache( context.ressources.__boot__, ensureCacheBoot_callback );
+        RessourceDispatcher._buildRessourceTree( buildRessourceTree_callback );
+
+        function buildRessourceTree_callback( err, ressources_, maxMtimes_ ) {
+            if ( err ) {
+                return callback( err );
+            }
+            ressources = ressources_;
+            maxMtimes = maxMtimes_;
+            
+            ( ressources.__boot__ = ressources[ 'js' ][ BOOT_MODULE ] ).ressources = ressources;
+            delete ressources[ 'js' ][ BOOT_MODULE ];
+
+            RessourceDispatcher._ensureCache( ressources.__boot__, ensureCacheBoot_callback );
         }
 
         function ensureCacheBoot_callback( err ) {
             if ( err ) {
-                throw err;
+                return callback( err );
             }
-            for ( var ressourceType in context.ressources ) {
-                var ressourceTypeContext = {
+            delete ressources.__boot__;
+            for ( var ressourceType in ressources ) {
+                var nextContext = {
                     type: ressourceType,
-                    joinPath: path.join( CACHE_DIR, 'oneshot.' + ressourceType ),
+                    oneshotPath: path.join( CACHE_DIR, 'oneshot.' + ressourceType ),
                     };
-                context.pendingOperations++;
-                fs.stat( ressourceTypeContext.joinPath, statComponentFragmentJoin_callback.bind( ressourceTypeContext ) );
+                ++pendingOperations;
+                fs.stat( nextContext.oneshotPath, statOneshot_callback.bind( nextContext ) );
             }
         }
 
-        function statComponentFragmentJoin_callback( err, stats ) {
-            var ressourceTypeContext = this;
-            context.pendingOperations--;
+        function statOneshot_callback( err, stats ) {
+            var context = this;
+            --pendingOperations;
             if ( err ) {
                 if ( err.code == 'ENOENT' ) {
                     stats = { mtime: 0 };
                 } else {
-                    throw err;
+                    return callback( err );
                 }
             }
-            if ( context.maxMtimes[ ressourceTypeContext.type ] >= stats.mtime ) {
-                var ressources = context.ressources[ ressourceTypeContext.type ];
-                context.pendingOperations++;
-                ressourceTypeContext.waitingRessources = Object.getOwnPropertyNames( ressources ).length;
-                // TODO: think about number of event listeners
-                ressourceTypeContext.writeStream = fs.createWriteStream( ressourceTypeContext.joinPath + '_' ).setMaxListeners(
-                     [ 'finish', 'unpipe', 'drain', 'close', ].length * ressourceTypeContext.waitingRessources );
-                for ( var virtualPath in ressources ) {
-                    var ressourceContext = ressources[ virtualPath ];
-                    ressourceContext.joinContext = ressourceTypeContext;
-                    RessourceDispatcher._ensureCache( ressourceContext, ensureCache_callback.bind( ressourceContext ) );
+            if ( maxMtimes[ context.type ] >= stats.mtime ) {
+                var typeRessources = ressources[ context.type ];
+                pendingOperations += Object.getOwnPropertyNames( typeRessources ).length;
+                writeStreams[ context.type ] = fs.createWriteStream( context.oneshotPath + '_' );
+                for ( var relativePath in typeRessources ) {
+                    // filter maximized ressources
+                    var reversePathSplit = relativePath.split( '.' ).reverse();
+                    if ( reversePathSplit.length >= 3 && reversePathSplit[ 1 ] !== 'min') {
+                        var minPath = reversePathSplit.slice( 1 ).reverse().concat( 'min', reversePathSplit[ 0 ] ).join( '.' );
+                        if ( typeRessources[ minPath ] ) {
+                            process.nextTick( writeOneshot_callback );
+                            continue;
+                        }
+                    }
+                    var ressource = typeRessources[ relativePath ];
+                    if ( context.type === 'js' ) {
+                        RessourceDispatcher._ensureCache( ressource, ensureCache_callback.bind( ressource ) );
+                    } else {
+                        ressource.cachePath = ressource.rawPath;
+                        ensureCache_callback.call( ressource );
+                    }
                 };
+            } else {
+                ++pendingOperations;
+                process.nextTick( renameOneshot_callback );
             }
         }
 
         function ensureCache_callback( err ) {
-            var ressourceContext = this;
+            var ressource = this;
             if ( err ) {
-                throw err;
-            } else {
-                var readStream = fs.createReadStream( ressourceContext.cachedPath );
-                readStream.on( 'end', writeComponentFragmentJoin_callback.bind( ressourceContext.joinContext ) );
-                readStream.pipe( ressourceContext.joinContext.writeStream, { end: false } );
+                return callback( err );
+            }
+            var content = fs.readFileSync( ressource.cachePath, 'utf8' );
+            content = content.replace( /^\s+/gm, '' );
+            content = [
+                '/* ' + ( ressource.virtualPath + '.' + ressource.ressourceType + ' ' + '*'.repeat( 72 ) ).slice( 0, 74 )
+                + '*' + '/',
+                content,
+                ''
+                ].join( '\n' );
+            writeStreams[ ressource.ressourceType ].write( content, 'utf8', writeOneshot_callback );
+        }
+
+        function writeOneshot_callback( err ) {
+            --pendingOperations;
+            if ( err ) {
+                return callback( err );
+            }
+            if ( pendingOperations ) {
+                return;
+            }
+            for ( var ressourceType in writeStreams ) {
+                ++pendingOperations;
+                var writeStream = writeStreams[ ressourceType ];
+                writeStream.close();
+                fs.rename( writeStream.path,
+                           writeStream.path.slice( 0, -1 ),
+                           renameOneshot_callback );
             }
         }
 
-        function writeComponentFragmentJoin_callback( err ) {
-            var ressourceTypeContext = this;
-            --ressourceTypeContext.waitingRessources || --context.pendingOperations;
+        function renameOneshot_callback( err ) {
+            --pendingOperations;
             if ( err ) {
-                // TODO: ???
-                throw err;
+                return callback( err );
             }
-            if ( ressourceTypeContext.waitingRessources ) {
+            if ( pendingOperations ) {
                 return;
             }
-            context.pendingOperations++;
-            ressourceTypeContext.writeStream.close();
-            fs.rename( ressourceTypeContext.joinPath + '_',
-                       ressourceTypeContext.joinPath,
-                       renameComponentFragmentJoin_callback.bind( ressourceTypeContext ) );
-        }
-
-        function renameComponentFragmentJoin_callback( err ) {
-            var ressourceTypeContext = this;
-            context.pendingOperations--;
-            if ( err ) {
-                throw err;
-            }
-            if ( context.pendingOperations ) {
-                return;
-            }
+            process.nextTick( callback );
         }
     }
 });

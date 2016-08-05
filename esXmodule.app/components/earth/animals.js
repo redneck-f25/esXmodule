@@ -1,9 +1,9 @@
  "use strict";
 
-var animals = require( './common/animals' );
+var animals = require( './common/animals_' );
 
-var Class = require( '../utils/Class6' );
-var Class5 = require( '../utils/Class5' );
+var Class = require( '../utils/common/ClassV6' );
+var OldStyleClass = require( '../utils/common/Class' );
 
 var MammalDB = this.MammalDB = Class( module, class MammalDB extends animals.Mammal {
     constructor() {
@@ -18,7 +18,7 @@ var MammalDB = this.MammalDB = Class( module, class MammalDB extends animals.Mam
     }
 });
 
-var Mammal5DB = this.Mammal5DB = Class5( module, 'class Mammal5DB extends', animals.Mammal5, {
+var Mammal5DB = this.Mammal5DB = OldStyleClass( module, 'class Mammal5DB extends', animals.Mammal5, {
     constructor: function Mammal5DB() {
         this._super();
     },

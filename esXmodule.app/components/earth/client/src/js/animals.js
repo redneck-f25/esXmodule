@@ -1,17 +1,9 @@
  "use strict";
 
-var animals = require( './common/animals' );
+var animals = require( './common/animals_' );
 
-var Class = require( '../utils/Class6' );
-var Class5 = require( '../utils/Class5' );
-
-var Disposable = {
-    dispose: Class5.abstractMethod,
-};
-
-var Renderable = { 
-    render: Class5.abstractMethod,
-}
+var Class = require( '../utils/common/ClassV6' );
+var OldStyleClass = require( '../utils/common/Class' );
 
 var WidgetDictMixin = {
     dispose: function dispose () {},
@@ -22,7 +14,7 @@ class WidgetClassMixin {
 }
 
 var MammalWidget = this.MammalWidget = Class( module,
-        Disposable, Renderable, WidgetClassMixin, WidgetDictMixin,
+        Class.I.Disposable, Class.I.Renderable, WidgetClassMixin,
         class MammalWidget extends animals.Mammal {
     constructor() {
         super();
@@ -36,8 +28,8 @@ var MammalWidget = this.MammalWidget = Class( module,
     }
 });
 
-var Mammal5Widget = this.Mammal5Widget = Class5( module,
-        Disposable, Renderable, WidgetClassMixin, WidgetDictMixin,
+var Mammal5Widget = this.Mammal5Widget = OldStyleClass( module,
+        OldStyleClass.I.Disposable, OldStyleClass.I.Renderable, WidgetClassMixin, WidgetDictMixin,
         'class Mammal5Widget extends', animals.Mammal5, {
     constructor: function constructor() {
         this._super();

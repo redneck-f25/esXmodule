@@ -1,7 +1,7 @@
 "use strict";
 
-var Class = require( '../../utils/Class6' );
-var Class5 = require( '../../utils/Class5' );
+var Class = require( '../../utils/common/ClassV6' );
+var OldStyleClass = require( '../../utils/common/Class' );
 
 var Thing = require( '../thing' ).Thing;
 var Thing5 = require( '../thing' ).Thing5;
@@ -12,8 +12,8 @@ var LivingThing = this.LivingThing = Class( module, class LivingThing extends Th
     }
 });
 
-var LivingThing5 = this.LivingThing5 = Class5( module, 'class LivingThing5 extends', Thing5, {
-    constructor: function LivingThing5() {
+var LivingThing5 = this.LivingThing5 = OldStyleClass( module, 'class LivingThing5 extends', Thing5, {
+    constructor: function constructor() {
         this._super();
     }
 });

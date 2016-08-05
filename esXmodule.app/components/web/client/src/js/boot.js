@@ -1,4 +1,4 @@
-"use raw";
+"use plain";
 "use strict";
 
 var debug = /(^\??|&)debug(=.*?)?(&|$)/.test( location.search );
@@ -15,7 +15,7 @@ var Module = function Module( moduleName, bucket, moduleCode ) {
     this.bucket = bucket;
     this.exports = {};
     this.modules = {};
-    this.initialized = false;
+    this.loaded = false;
     this.parent = undefined;
     this.children = [];
     this.compiledCode = moduleCode;
@@ -36,25 +36,28 @@ Module._require = function require( moduleName ) {
             throw new TypeError( '"' + ( index ? array.slice( 0, index ).join( '/' ) + '/' : '' ) + p + '" is not a module' );
         }
     });
-    if ( !module.initialized ) {
+    if ( !module.loaded ) {
+        module.loaded = true;
         module.compiledCode.call( module.exports, module.exports, module._require, module );
         var exports = module.exports;
         if ( exports !== undefined && exports !== null && exports.__module__ === undefined ) {
-            Object.defineProperties( exports, { __module__: { value: module } } );
+            Object.defineProperties( exports, {
+                __module__: { value: module, configurable: false, enumerable: false, writable: false },
+            });
         }
-        module.initialized = true;
         module.parent = this;
     }
     module in this.children || this.children.push( module );
     return module.exports;
 };
 
-var WebClient = window.WebClient = new Module( '__main__', null );
+var WebClient = window[ globalWebClientVariableName ] = new Module( '__main__', null );
 var require = WebClient._require;
 
 WebClient.define = function define( moduleName, moduleCode ) {
     var module, exports;
     module = WebClient;
+    // TODO: Do we need this if-clause?
     if ( moduleName !== '__main__' ) {
         moduleName.split( '/' ).forEach( function( p, index, array ) {
             if ( module.modules[ p ] === undefined ) {
@@ -68,45 +71,58 @@ WebClient.define = function define( moduleName, moduleCode ) {
     }
 };
 
-var moduleLoader = function moduleLoader() {
-    if ( arguments.length && arguments[ 0 ].target && arguments[ 0 ].target.src ) {
-        var script = arguments[ 0 ].target;
-        
-        script.removeEventListener( 'load', moduleLoader.loadEventListener );
-        script.removeEventListener( 'error', moduleLoader.errorEventListener );
-    }
-    if ( !this.length ) {
-        // var Application = require( './web/Application' );
-        // setTimeout( Application.run.bind( Application ), 0 );
-        console.log( new Date() );
-        var Application = require( './web/Application' );
-        setTimeout( Application.run, 0 );
-        return;
-    }
-    var module = this.shift();
-    var script = document.createElement( 'script')
-    script.async = false;
-    script.src = module;
-    script.addEventListener( 'load', moduleLoader.loadEventListener = moduleLoader.bind( this ) );
-    script.addEventListener( 'error', moduleLoader.errorEventListener = function(event) {
-        debugger;
-    } );
-    document.head.appendChild( script );
-};
+( function loadRessources() {
+    var pendingLoadings = 0;
+    var failedLoadings = [];
 
-Object.getOwnPropertyNames( ressources ).forEach( function __forEachRessourceType( ressourceType ) {
-    if ( ressourceType === 'js' ) {
-        if ( debug ) {
-            moduleLoader.call( ressources[ ressourceType ] );
-        } else {
-            moduleLoader.call( [ 'web/client/src/js/oneshot.js' ] );
+    function loadRessourceOnEvent( event ) {
+        var target = event.target;
+        target.removeEventListener( 'error', loadRessourceOnEvent );
+        target.removeEventListener( 'load', loadRessourceOnEvent );
+        pendingLoadings--;
+        if ( event.type === 'error' ) {
+            failedLoadings.push( event );
         }
-    } else if ( ressourceType === 'css' ) {
-        ressources[ ressourceType ].forEach( function __forEachRessource ( virtualPath ) {
+        if ( pendingLoadings ) {
+            return;
+        }
+        if ( failedLoadings.length > 0 ) {
+            debugger;
+        } else {
+            console.log( new Date() );
+            var Application = require( './web/Application' );
+            setTimeout( Application.run, 0 );
+        }
+    }
+
+    var createTarget = {
+        js: function createTarget_js( src ) {
+            var script = document.createElement( 'script')
+            script.src = src;
+            return script;
+        },
+        css: function createTarget_css( href ) {
             var link = document.createElement( 'link' );
             link.rel = 'stylesheet';
-            link.href = virtualPath;
-            document.head.appendChild( link );
-        });
+            link.href = href;
+            return link
+        },
     }
-});
+
+    if ( !debug ) {
+        ressources = {
+            js:  [ 'web/client/oneshot/oneshot.js' ],
+            css: [ 'web/client/oneshot/oneshot.css' ],
+        }
+    }
+
+    Object.getOwnPropertyNames( ressources ).forEach( function __forEachRessourceType( ressourceType ) {
+        pendingLoadings += ressources[ ressourceType ].length;
+        ressources[ ressourceType ].forEach( function __forEachRessource( virtualPath ) {
+            var target = createTarget[ ressourceType ]( virtualPath );
+            target.addEventListener( 'error', loadRessourceOnEvent );
+            target.addEventListener( 'load', loadRessourceOnEvent );
+            document.head.appendChild( target );
+        });
+    });
+})();
